@@ -30,6 +30,7 @@ interface QuestStore {
   quests: Quest[];
   rewards: Reward[];
   stats: UserStats;
+  lastUpdated: number;
   
   token: string | null;
   gistId: string | null;
@@ -77,7 +78,7 @@ const debouncedSync = debounce(async (token: string, gistId: string, data: any) 
   } finally {
     useQuestStore.setState({ isSyncing: false });
   }
-}, 2000);
+}, 1000);
 
 const defaultState = {
   quests: [],
@@ -89,6 +90,7 @@ const defaultState = {
     questsCompleted: 0,
     completedDates: {},
   },
+  lastUpdated: 0,
   gistId: null,
   githubUser: null,
   isSyncing: false,
@@ -107,22 +109,36 @@ export const useQuestStore = create<QuestStore>()(
           set({ token, githubUser: user, isLoaded: false });
           
           const savedData = await gistService.getSaveData(token);
+          const localLastUpdated = get().lastUpdated || 0;
+          const currentGistId = get().gistId;
+
           if (savedData) {
-            set({
-              gistId: savedData.gistId,
-              quests: savedData.data.quests || [],
-              rewards: savedData.data.rewards || [],
-              stats: { ...defaultState.stats, ...savedData.data.stats },
-              isLoaded: true
-            });
+            const gistLastUpdated = savedData.data.lastUpdated || 0;
+            
+            // If Gist is newer, or if we switched to a different gist entirely, use Gist data
+            if (gistLastUpdated >= localLastUpdated || (currentGistId && currentGistId !== savedData.gistId)) {
+              set({
+                gistId: savedData.gistId,
+                quests: savedData.data.quests || [],
+                rewards: savedData.data.rewards || [],
+                stats: { ...defaultState.stats, ...savedData.data.stats },
+                lastUpdated: gistLastUpdated,
+                isLoaded: true
+              });
+            } else {
+              // Local is newer! Just set loaded and trigger a sync to update the Gist
+              set({ gistId: savedData.gistId, isLoaded: true });
+              get().triggerSync();
+            }
           } else {
             const initialData = {
-              quests: defaultState.quests,
-              rewards: defaultState.rewards,
-              stats: defaultState.stats
+              quests: get().quests,
+              rewards: get().rewards,
+              stats: get().stats,
+              lastUpdated: Date.now()
             };
             const newGistId = await gistService.createSaveGist(token, initialData);
-            set({ gistId: newGistId, isLoaded: true });
+            set({ gistId: newGistId, isLoaded: true, lastUpdated: initialData.lastUpdated });
           }
         } catch (error) {
           console.error("Login failed", error);
@@ -141,7 +157,8 @@ export const useQuestStore = create<QuestStore>()(
           debouncedSync(state.token, state.gistId, {
             quests: state.quests,
             rewards: state.rewards,
-            stats: state.stats
+            stats: state.stats,
+            lastUpdated: state.lastUpdated
           });
         }
       },
@@ -158,6 +175,7 @@ export const useQuestStore = create<QuestStore>()(
               createdAt: Date.now(),
             },
           ],
+          lastUpdated: Date.now()
         }));
         get().triggerSync();
       },
@@ -194,6 +212,7 @@ export const useQuestStore = create<QuestStore>()(
               questsCompleted: state.stats.questsCompleted + 1,
               completedDates: newCompletedDates,
             },
+            lastUpdated: Date.now()
           };
         });
         get().triggerSync();
@@ -202,6 +221,7 @@ export const useQuestStore = create<QuestStore>()(
       deleteQuest: (id) => {
         set((state) => ({
           quests: state.quests.filter((q) => q.id !== id),
+          lastUpdated: Date.now()
         }));
         get().triggerSync();
       },
@@ -216,6 +236,7 @@ export const useQuestStore = create<QuestStore>()(
               cost,
             },
           ],
+          lastUpdated: Date.now()
         }));
         get().triggerSync();
       },
@@ -230,6 +251,7 @@ export const useQuestStore = create<QuestStore>()(
               ...state.stats,
               gold: state.stats.gold - reward.cost,
             },
+            lastUpdated: Date.now()
           };
         });
         get().triggerSync();
@@ -238,13 +260,21 @@ export const useQuestStore = create<QuestStore>()(
       deleteReward: (id) => {
         set((state) => ({
           rewards: state.rewards.filter((r) => r.id !== id),
+          lastUpdated: Date.now()
         }));
         get().triggerSync();
       },
     }),
     {
       name: 'questlog-auth',
-      partialize: (state) => ({ token: state.token }),
+      partialize: (state) => ({ 
+        token: state.token,
+        gistId: state.gistId,
+        quests: state.quests,
+        rewards: state.rewards,
+        stats: state.stats,
+        lastUpdated: state.lastUpdated
+      }),
     }
   )
 );

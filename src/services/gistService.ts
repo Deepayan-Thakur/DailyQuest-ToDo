@@ -4,15 +4,22 @@ const GIST_DESC = 'QuestLog App Save Data';
 export const gistService = {
   async authenticate(token: string) {
     const res = await fetch('https://api.github.com/user', {
-      headers: { Authorization: `token ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json'
+      }
     });
     if (!res.ok) throw new Error('Invalid token');
     return res.json();
   },
   
   async getSaveData(token: string) {
-    const res = await fetch('https://api.github.com/gists', {
-      headers: { Authorization: `token ${token}` }
+    const res = await fetch(`https://api.github.com/gists?t=${Date.now()}`, {
+      cache: 'no-cache',
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json'
+      }
     });
     if (!res.ok) throw new Error('Failed to fetch gists');
     
@@ -20,8 +27,12 @@ export const gistService = {
     const saveGist = gists.find((g: any) => g.files[GIST_FILENAME]);
     
     if (saveGist) {
-      const gistRes = await fetch(saveGist.url, {
-        headers: { Authorization: `token ${token}` }
+      const gistRes = await fetch(`${saveGist.url}?t=${Date.now()}`, {
+        cache: 'no-cache',
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json'
+        }
       });
       const gistData = await gistRes.json();
       const content = gistData.files[GIST_FILENAME].content;
@@ -34,7 +45,8 @@ export const gistService = {
     const res = await fetch('https://api.github.com/gists', {
       method: 'POST',
       headers: { 
-        Authorization: `token ${token}`, 
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json' 
       },
       body: JSON.stringify({
@@ -54,7 +66,8 @@ export const gistService = {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, {
       method: 'PATCH',
       headers: { 
-        Authorization: `token ${token}`, 
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json' 
       },
       body: JSON.stringify({
